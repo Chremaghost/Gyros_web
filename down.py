@@ -57,14 +57,12 @@ class Browser(QMainWindow):
         layout.addWidget(self.cookies_text)
         self.cookies_window.setLayout(layout)
 
-    # Charger les cookies
         self.cookies_text.setText("Chargement des cookies...\n")
         self.cookie_store.cookieAdded.connect(self.add_cookie_to_display)
 
         self.cookies_window.show()
 
     def add_cookie_to_display(self, cookie):
-        """Ajoute les cookies un par un au widget de texte."""
         cookie_data = (
             f"Nom: {cookie.name().data().decode()}\n"
             f"Valeur: {cookie.value().data().decode()}\n"
@@ -76,7 +74,6 @@ class Browser(QMainWindow):
 
 
     def handle_cookies(self, cookies):
-        """Ajoute les cookies au widget de texte."""
         cookies_info = []
         for cookie in cookies:
             cookie_data = (
