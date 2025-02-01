@@ -8,9 +8,12 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QToolBar, QLineEdit, QAc
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 from PyQt5.QtCore import QUrl, Qt
 
-# Import Selenium et les options pour le navigateur headless
+# Import Selenium et outils pour l'attente explicite
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 class Browser(QMainWindow):
     def __init__(self):
@@ -118,18 +121,26 @@ class Browser(QMainWindow):
             QMessageBox.information(self, "Aucun résultat", "Aucun résultat trouvé.")
 
     def search_wikipedia(self, query):
-        # URL de recherche sur Wikipédia en français
         url = f"https://fr.wikipedia.org/w/index.php?search={query}"
         try:
             response = requests.get(url, timeout=10)
             soup = BeautifulSoup(response.text, "html.parser")
             results = []
-            # Rechercher les titres dans les résultats de recherche
-            for item in soup.find_all("div", class_="mw-search-result-heading"):
-                a_tag = item.find("a")
-                if a_tag and "href" in a_tag.attrs:
-                    title = a_tag.get_text(strip=True)
-                    link = "https://fr.wikipedia.org" + a_tag["href"]
+            # Chercher des résultats de recherche classiques
+            search_results = soup.find_all("div", class_="mw-search-result-heading")
+            if search_results:
+                for item in search_results:
+                    a_tag = item.find("a")
+                    if a_tag and "href" in a_tag.attrs:
+                        title = a_tag.get_text(strip=True)
+                        link = "https://fr.wikipedia.org" + a_tag["href"]
+                        results.append((title, link))
+            else:
+                # Si aucun résultat n'est trouvé, vérifier si c'est un article direct
+                first_heading = soup.find("h1", id="firstHeading")
+                if first_heading:
+                    title = first_heading.get_text(strip=True)
+                    link = response.url  # URL actuelle (redirection vers l'article)
                     results.append((title, link))
             return results
         except Exception as e:
@@ -137,22 +148,20 @@ class Browser(QMainWindow):
             return []
 
     def search_youtube(self, query):
-        # Utilisation de Selenium pour charger dynamiquement la page de résultats de YouTube
         url = f"https://www.youtube.com/results?search_query={query}"
         options = Options()
-        options.add_argument("--headless")  # Mode headless (sans interface)
+        options.add_argument("--headless")
         options.add_argument("--disable-gpu")
-        # Créer une instance du navigateur Selenium (assurez-vous que ChromeDriver est dans le PATH)
+        driver = None
         try:
             driver = webdriver.Chrome(options=options)
             driver.get(url)
-            # Attendre que la page se charge (ajustez le temps si nécessaire)
-            time.sleep(3)
+            # Utiliser WebDriverWait pour attendre que la page se charge
+            wait = WebDriverWait(driver, 10)
+            wait.until(EC.presence_of_element_located((By.ID, "contents")))
             page_source = driver.page_source
-            driver.quit()
             soup = BeautifulSoup(page_source, "html.parser")
             results = []
-            # Recherche des liens vidéo : on filtre les <a> avec href commençant par "/watch"
             for a_tag in soup.find_all("a", href=True):
                 href = a_tag["href"]
                 if href.startswith("/watch") and a_tag.get("title"):
@@ -170,9 +179,11 @@ class Browser(QMainWindow):
         except Exception as e:
             print("Erreur lors de la recherche sur YouTube avec Selenium:", e)
             return []
+        finally:
+            if driver:
+                driver.quit()
 
     def display_search_results(self, results):
-        # Fenêtre pour afficher les résultats de recherche
         self.results_window = QWidget()
         self.results_window.setWindowTitle("Résultats de recherche")
         self.results_window.setGeometry(150, 150, 800, 600)
@@ -181,10 +192,8 @@ class Browser(QMainWindow):
         layout.addWidget(self.results_list)
         self.results_window.setLayout(layout)
 
-        # Ajouter les résultats à la liste
         for title, link in results:
             item = QListWidgetItem(title)
-            # Stocker le lien dans l'item
             item.setData(Qt.UserRole, link)
             self.results_list.addItem(item)
 
