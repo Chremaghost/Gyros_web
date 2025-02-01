@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QToolBar, QLineEdit, QAc
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 from PyQt5.QtCore import QUrl, Qt
 
-# Import Selenium et outils pour l'attente explicite
+# Selenium pour YouTube (mode headless)
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -60,10 +60,10 @@ class Browser(QMainWindow):
 
         # ComboBox pour choisir la plateforme de recherche
         self.platform_combo = QComboBox()
-        self.platform_combo.addItems(["Wikipedia", "YouTube"])
+        self.platform_combo.addItems(["Wikipedia", "YouTube", "StackOverflow", "Reddit", "Medium"])
         self.navigation_toolbar.addWidget(self.platform_combo)
 
-        # Historique (liste de chaînes de caractères)
+        # Historique
         self.history = []
 
         # Gestion des cookies
@@ -112,6 +112,12 @@ class Browser(QMainWindow):
             results = self.search_wikipedia(query)
         elif platform == "YouTube":
             results = self.search_youtube(query)
+        elif platform == "StackOverflow":
+            results = self.search_stackoverflow(query)
+        elif platform == "Reddit":
+            results = self.search_reddit(query)
+        elif platform == "Medium":
+            results = self.search_medium(query)
         else:
             results = []
 
@@ -126,7 +132,7 @@ class Browser(QMainWindow):
             response = requests.get(url, timeout=10)
             soup = BeautifulSoup(response.text, "html.parser")
             results = []
-            # Chercher des résultats de recherche classiques
+            # Recherche de résultats classiques
             search_results = soup.find_all("div", class_="mw-search-result-heading")
             if search_results:
                 for item in search_results:
@@ -136,11 +142,11 @@ class Browser(QMainWindow):
                         link = "https://fr.wikipedia.org" + a_tag["href"]
                         results.append((title, link))
             else:
-                # Si aucun résultat n'est trouvé, vérifier si c'est un article direct
+                # Vérifier s'il s'agit directement d'un article
                 first_heading = soup.find("h1", id="firstHeading")
                 if first_heading:
                     title = first_heading.get_text(strip=True)
-                    link = response.url  # URL actuelle (redirection vers l'article)
+                    link = response.url
                     results.append((title, link))
             return results
         except Exception as e:
@@ -156,7 +162,7 @@ class Browser(QMainWindow):
         try:
             driver = webdriver.Chrome(options=options)
             driver.get(url)
-            # Utiliser WebDriverWait pour attendre que la page se charge
+            # Attendre que l'élément contenant les résultats soit présent
             wait = WebDriverWait(driver, 10)
             wait.until(EC.presence_of_element_located((By.ID, "contents")))
             page_source = driver.page_source
@@ -182,6 +188,70 @@ class Browser(QMainWindow):
         finally:
             if driver:
                 driver.quit()
+
+    def search_stackoverflow(self, query):
+        url = f"https://stackoverflow.com/search?q={query}"
+        try:
+            response = requests.get(url, timeout=10)
+            soup = BeautifulSoup(response.text, "html.parser")
+            results = []
+            # Recherche des questions via la classe "question-summary"
+            for question in soup.find_all("div", class_="question-summary"):
+                a_tag = question.find("a", class_="question-hyperlink")
+                if a_tag:
+                    title = a_tag.get_text(strip=True)
+                    link = "https://stackoverflow.com" + a_tag["href"]
+                    results.append((title, link))
+            return results
+        except Exception as e:
+            print("Erreur lors de la recherche sur StackOverflow:", e)
+            return []
+
+    def search_reddit(self, query):
+        url = f"https://www.reddit.com/search/?q={query}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(response.text, "html.parser")
+            results = []
+            # Recherche des liens ayant l'attribut data-click-id égal à "body"
+            for a_tag in soup.find_all("a", attrs={"data-click-id": "body"}):
+                title = a_tag.get_text(strip=True)
+                link = a_tag.get("href")
+                if link and not link.startswith("http"):
+                    link = "https://www.reddit.com" + link
+                if title and link:
+                    results.append((title, link))
+            # Filtrer les doublons
+            seen = set()
+            filtered_results = []
+            for title, link in results:
+                if link not in seen:
+                    filtered_results.append((title, link))
+                    seen.add(link)
+            return filtered_results
+        except Exception as e:
+            print("Erreur lors de la recherche sur Reddit:", e)
+            return []
+
+    def search_medium(self, query):
+        url = f"https://medium.com/search?q={query}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(response.text, "html.parser")
+            results = []
+            # Recherche des articles via une classe typique (la structure peut varier)
+            for div in soup.find_all("div", class_="postArticle-content"):
+                a_tag = div.find("a")
+                if a_tag and a_tag.get("href"):
+                    title = a_tag.get_text(strip=True)
+                    link = a_tag["href"].split("?")[0]
+                    results.append((title, link))
+            return results
+        except Exception as e:
+            print("Erreur lors de la recherche sur Medium:", e)
+            return []
 
     def display_search_results(self, results):
         self.results_window = QWidget()
