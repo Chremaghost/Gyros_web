@@ -1,4 +1,5 @@
 import sys
+import time
 import requests
 from bs4 import BeautifulSoup
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QToolBar, QLineEdit, QAction, 
@@ -6,6 +7,10 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QToolBar, QLineEdit, QAc
                              QComboBox, QMessageBox)
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 from PyQt5.QtCore import QUrl, Qt
+
+# Import Selenium et les options pour le navigateur headless
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 
 class Browser(QMainWindow):
     def __init__(self):
@@ -132,24 +137,28 @@ class Browser(QMainWindow):
             return []
 
     def search_youtube(self, query):
-        # URL de recherche sur YouTube
+        # Utilisation de Selenium pour charger dynamiquement la page de résultats de YouTube
         url = f"https://www.youtube.com/results?search_query={query}"
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
+        options = Options()
+        options.add_argument("--headless")  # Mode headless (sans interface)
+        options.add_argument("--disable-gpu")
+        # Créer une instance du navigateur Selenium (assurez-vous que ChromeDriver est dans le PATH)
         try:
-            response = requests.get(url, headers=headers, timeout=10)
-            soup = BeautifulSoup(response.text, "html.parser")
+            driver = webdriver.Chrome(options=options)
+            driver.get(url)
+            # Attendre que la page se charge (ajustez le temps si nécessaire)
+            time.sleep(3)
+            page_source = driver.page_source
+            driver.quit()
+            soup = BeautifulSoup(page_source, "html.parser")
             results = []
-            # Recherche des liens vidéo
-            # Attention : la structure de YouTube peut varier et ce scraping peut être limité
+            # Recherche des liens vidéo : on filtre les <a> avec href commençant par "/watch"
             for a_tag in soup.find_all("a", href=True):
                 href = a_tag["href"]
-                if href.startswith("/watch"):
+                if href.startswith("/watch") and a_tag.get("title"):
                     title = a_tag.get("title")
-                    if title:
-                        link = "https://www.youtube.com" + href
-                        results.append((title, link))
+                    link = "https://www.youtube.com" + href
+                    results.append((title, link))
             # Filtrer les doublons
             seen = set()
             filtered_results = []
@@ -159,7 +168,7 @@ class Browser(QMainWindow):
                     seen.add(link)
             return filtered_results
         except Exception as e:
-            print("Erreur lors de la recherche sur YouTube:", e)
+            print("Erreur lors de la recherche sur YouTube avec Selenium:", e)
             return []
 
     def display_search_results(self, results):
